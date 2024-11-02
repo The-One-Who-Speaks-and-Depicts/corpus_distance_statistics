@@ -1,0 +1,348 @@
+---
+title: "experiment_vector_analysis"
+output: pdf_document
+date: "`r Sys.Date()`"
+---
+
+```{r imports, message=FALSE}
+library('tidyverse')
+library('factoextra')
+library('skimr')
+library('ltm')
+library('corrplot')
+library('psych')
+library('ggfortify')
+library('rstatix')
+library('Rtsne')
+library('dbscan')
+library('ggplot2')
+library('ape')
+library('TreeDist')
+library('phytools')
+library('TreeTools')
+library('phangorn')
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r df-loading}
+df <- read.csv("experiment_results/new_results.csv", sep = ';')
+summary(df)
+```
+
+```{r deleting-incorrect}
+df <- df %>%
+  filter(Outgroup.identification != "INCORRECT")
+summary(df)
+```
+
+
+```{r preparing dataset for check on gensim}
+df_with_gensim <- df %>%
+  dplyr::select("Gensim", "Outer.distance.split", "Inner.distance.split", "Split.difference")
+summary(df_with_gensim)
+```
+
+
+```{r transforming Gensim to numeric}
+df_with_gensim$Gensim <- as.numeric(df_with_gensim$Gensim)
+summary(df_with_gensim)
+```
+
+```{r normalisation test}
+shapiro.test(df_with_gensim$Outer.distance.split)
+shapiro.test(df_with_gensim$Inner.distance.split)
+shapiro.test(df_with_gensim$Split.difference)
+```
+
+
+
+```{r corrplot}
+corrplot(cor(df_with_gensim), method = "color", order = "hclust")
+```
+```{r correlation test}
+df_with_gensim %>%
+  psych::corr.test() %>%
+  print(short=FALSE)
+```
+
+```{r pairwise correlation tests}
+cor.test(df_with_gensim$Gensim, df_with_gensim$Outer.distance.split)
+cor.test(df_with_gensim$Gensim, df_with_gensim$Inner.distance.split)
+cor.test(df_with_gensim$Gensim, df_with_gensim$Split.difference)
+```
+
+```{r prepare dataset for size influence check}
+df_slavic_standard <- df %>%
+  dplyr::filter(Material == "Slavic standard") %>%
+  dplyr::select("Split", "Outer.distance.split", "Inner.distance.split", "Split.difference")
+  
+
+summary(df_slavic_standard)
+```
+
+```{r corrplot for size}
+corrplot(cor(df_slavic_standard), method = "color", order = "hclust")
+```
+
+```{r correlation test for Slavic}
+df_slavic_standard %>%
+  psych::corr.test() %>%
+  print(short=FALSE)
+```
+
+```{r pairwise correlation tests for size}
+cor.test(df_slavic_standard$Split, df_slavic_standard$Outer.distance.split)
+cor.test(df_slavic_standard$Split, df_slavic_standard$Inner.distance.split)
+cor.test(df_slavic_standard$Split, df_slavic_standard$Split.difference)
+```
+
+
+```{r prepare dataset of string similarity measurements}
+df_levs <- df %>%
+  dplyr::filter(Auxiliary_metrics == "LDND" | Auxiliary_metrics == "WJWDND") %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split", "Split.difference")
+
+summary(df_levs)
+```
+```{r prepare dataset of vector measurements}
+df_vectors <- df %>%
+  dplyr::filter(Auxiliary_metrics == "VDND" | Auxiliary_metrics == "VWJDND") %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split", "Split.difference")
+
+summary(df_vectors)
+```
+
+```{r t-test}
+t.test(df_levs$Outer.distance.split, df_vectors$Outer.distance.split, conf.level=0.999)
+t.test(df_levs$Inner.distance.split, df_vectors$Inner.distance.split, conf.level=0.999)
+t.test(df_levs$Split.difference, df_vectors$Split.difference, conf.level=0.999)
+```
+
+```{r prepare dataset for component analysis}
+df_for_pca <- df %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split")
+summary(df_for_pca)
+```
+
+```{r conduct pca and visualise results}
+pca_res <- prcomp(df_for_pca, scale. = TRUE)
+
+factoextra::fviz_pca_biplot(pca_res, repel = TRUE)
+
+autoplot(pca_res, data = df, color="Hybridisation_type", label.size = 3) + theme(panel.background = element_blank()) + scale_color_manual(values=c("#000000", "#6600CC", "red"))
+```
+
+```{r pca-all}
+all_df <- read.csv("experiment_results/new_results.csv", sep = ';')
+all_df_for_pca <- all_df %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split")
+pca_res <- prcomp(all_df_for_pca, scale. = TRUE)
+
+factoextra::fviz_pca_biplot(pca_res, repel = TRUE)
+
+autoplot(pca_res, data = all_df, color="Hybridisation_type", label.size = 3) + theme(panel.background = element_blank()) + scale_color_manual(values=c("#000000", "#6600CC", "red"))
+```
+
+```{r pca-specific-oes}
+oes_df <- read.csv("experiment_results/new_results.csv", sep = ';') %>%
+  dplyr::filter(Material == "Old East Slavic")
+oes_df_for_pca <- oes_df %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split")
+pca_res <- prcomp(oes_df_for_pca, scale. = TRUE)
+
+factoextra::fviz_pca_biplot(pca_res, repel = TRUE)
+
+autoplot(pca_res, data = oes_df, color="Hybridisation_type", label.size = 3) + theme(panel.background = element_blank()) + scale_color_manual(values=c("#000000", "#6600CC", "red"))
+```
+```{r pca-specific-mes}
+mes_df <- read.csv("experiment_results/new_results.csv", sep = ';') %>%
+  dplyr::filter(Material == "Modern East Slavic")
+mes_df_for_pca <- mes_df %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split")
+pca_res <- prcomp(mes_df_for_pca, scale. = TRUE)
+
+factoextra::fviz_pca_biplot(pca_res, repel = TRUE)
+
+autoplot(pca_res, data = mes_df, color="Hybridisation_type", label.size = 3) + theme(panel.background = element_blank()) + scale_color_manual(values=c("#000000", "#6600CC", "red"))
+```
+
+```{r pca-specific-ms}
+ms_df <- read.csv("experiment_results/new_results.csv", sep = ';') %>%
+  dplyr::filter(Material == "Slavic standard")
+ms_df_for_pca <- ms_df %>%
+  dplyr::select("Outer.distance.split", "Inner.distance.split")
+pca_res <- prcomp(ms_df_for_pca, scale. = TRUE)
+
+factoextra::fviz_pca_biplot(pca_res, repel = TRUE)
+
+autoplot(pca_res, data = ms_df, color="Hybridisation_type", label.size = 3) + theme(panel.background = element_blank()) + scale_color_manual(values=c("#000000", "#6600CC", "red"))
+```
+
+```{r tsne}
+tsne_out <- Rtsne(as.matrix(unique(all_df_for_pca)), perplexity = 17)
+# Conversion of matrix to dataframe
+tsne_plot <- data.frame(x = tsne_out$Y[,1], 
+						y = tsne_out$Y[,2])
+```
+
+
+```{r hdbscan-tsne}
+cl <- hdbscan(tsne_plot, minPts = 20)
+cl$cluster
+```
+
+```{r hdbscan-plot}
+plot(tsne_plot, col=c("#000000", "#6600CC", "red")[cl$cluster+1], pch=20)
+```
+
+```{r hdbscan-certainty}
+plot(tsne_plot, cl$cluster+1, pch=15)
+  colors <- mapply(function(col, i) adjustcolor(col, alpha.f = cl$membership_prob[i]), 
+                   c("#000000", "#6600CC", "red")[cl$cluster+1], seq_along(cl$cluster))
+  points(tsne_plot, col=colors, pch=15)
+```
+
+
+```{r prepare gensim for anova}
+material <- df %>%
+  mutate(Gensim = factor(Gensim))
+material %>%
+  dplyr::select(Gensim) %>%
+  distinct()
+```
+```{r two-factor anova for outer distance and gensim}
+res.aov <- anova_test(data = material, dv = Outer.distance.split, wid = X., between = Gensim)
+get_anova_table(res.aov)
+```
+
+```{r two-factor anova for inner distance and gensim}
+res.aov <- anova_test(data = material, dv = Inner.distance.split, wid = X., between = Gensim)
+get_anova_table(res.aov)
+```
+```{r two-factor anova for diff and gensim}
+res.aov <- anova_test(data = material, dv = Split.difference, wid = X., between = Gensim)
+get_anova_table(res.aov)
+```
+
+```{r prepare for split analysis}
+material <- df %>%
+  dplyr::filter(Material == "Slavic standard") %>%
+  mutate(Split = factor(Split))
+material %>%
+  dplyr::select(Split) %>%
+  distinct()
+```
+
+```{r two-factor anova for outer distance and split}
+res.aov <- anova_test(data = material, dv = Outer.distance.split, wid = X., between = Split)
+get_anova_table(res.aov)
+```
+
+```{r two-factor anova for inner distance and split}
+res.aov <- anova_test(data = material, dv = Inner.distance.split, wid = X., between = Split)
+get_anova_table(res.aov)
+```
+
+```{r two-factor anova for split difference and split}
+res.aov <- anova_test(data = material, dv = Split.difference, wid = X., between = Split)
+get_anova_table(res.aov)
+```
+
+```{r prepare for analysis of hybrid metrics}
+material <- df %>%
+  dplyr::filter(Auxiliary_metrics != "NOT_USED") %>%
+  mutate(Auxiliary_metrics = factor(ifelse(Auxiliary_metrics == "WJWDND" | Auxiliary_metrics == "LDND", "string_sim", "VDND")))
+material %>%
+  dplyr::select(Auxiliary_metrics) %>%
+  distinct()
+```
+```{r two-factor anova for outer distance and hybrid metrics}
+
+res.aov <- anova_test(data = material, dv = Outer.distance.split, wid = X., between = Auxiliary_metrics)
+get_anova_table(res.aov)
+```
+
+```{r two-factor anova for inner distance and hybrid metrics}
+
+res.aov <- anova_test(data = material, dv = Inner.distance.split, wid = X., between = Auxiliary_metrics)
+get_anova_table(res.aov)
+```
+
+```{r two-factor anova for split difference and hybrid metrics}
+
+res.aov <- anova_test(data = material, dv = Split.difference, wid = X., between = Auxiliary_metrics)
+get_anova_table(res.aov)
+```
+
+
+```{r prepare data for anova by material}
+full_material <- df %>% 
+  dplyr::filter(Split == 1)
+summary(full_material)
+```
+
+```{r anova for outer distance split by material}
+res.aov <- anova_test(data = full_material, dv = Outer.distance.split, wid = X., between = Material)
+get_anova_table(res.aov)
+```
+
+```{r anova for inner distance split by material}
+res.aov <- anova_test(data = full_material, dv = Inner.distance.split, wid = X., between = Material)
+get_anova_table(res.aov)
+```
+
+```{r anova for diff by material}
+res.aov <- anova_test(data = full_material, dv = Split.difference, wid = X., between = Material)
+get_anova_table(res.aov)
+```
+
+```{r select east slavic only for separate test}
+es_material <- df %>%
+  dplyr::filter(Material == "Modern East Slavic" | Material == "Old East Slavic")
+summary(es_material)
+```
+
+```{r anova for outer distance split by east slavic material}
+res.aov <- anova_test(data = es_material, dv = Outer.distance.split, wid = X., between = Material)
+get_anova_table(res.aov)
+```
+
+```{r anova for inner distance split by east slavic material}
+res.aov <- anova_test(data = es_material, dv = Inner.distance.split, wid = X., between = Material)
+get_anova_table(res.aov)
+```
+
+```{r anova for split difference by east slavic material}
+res.aov <- anova_test(data = es_material, dv = Split.difference, wid = X., between = Material)
+get_anova_table(res.aov)
+```
+
+```{r get-majority-consensus-tree}
+treeFiles <- list.files('mes_trees_for_consensus', full.names=TRUE)
+treesForConsensus <- as.multiPhylo(lapply(treeFiles, ape::read.tree))
+
+ct <- consensus(treesForConsensus, p = .51, rooted = TRUE)
+
+ape::write.tree(ct, "consensusTree.newick")
+
+
+# plot imported tree
+png('consensusTree.png')
+plot(ct)
+dev.off()
+```
+
+```{r get-maximum-credibility-tree}
+mct <- maxCladeCred(treesForConsensus)
+
+ape::write.tree(mct, "maxCredTree.newick")
+
+
+# plot imported tree
+png('maxCredTree.png')
+plot(ct)
+dev.off()
+```
